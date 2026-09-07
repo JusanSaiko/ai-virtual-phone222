@@ -3586,3 +3586,196 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ----------------------------------------------------
+   Live Weather Widget
+---------------------------------------------------- */
+.wg-live-weather {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 11px 14px 9px;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--c-home-text);
+  isolation: isolate;
+}
+
+.wg-lw-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wg-lw-location {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-home-text);
+  cursor: pointer;
+}
+
+.wg-lw-location-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(10.5px * var(--app-text-scale, 1));
+  font-weight: 600;
+  line-height: 1.15;
+  opacity: 0.92;
+}
+
+.wg-lw-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.wg-lw-action {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--c-home-border, rgba(0, 0, 0, 0.08)) 80%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--c-home-card, rgba(255, 255, 255, 0.75)) 55%, transparent);
+  color: var(--c-home-sub);
+  cursor: pointer;
+  transition: color 150ms ease, opacity 150ms ease;
+}
+
+.wg-lw-action:hover {
+  color: var(--c-home-text);
+}
+
+.wg-lw-action:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.wg-lw-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.wg-lw-temp {
+  font-size: calc(43px * var(--app-text-scale, 1));
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.wg-lw-temp span {
+  font-size: calc(23px * var(--app-text-scale, 1));
+  font-weight: 500;
+  vertical-align: top;
+}
+
+.wg-lw-cond {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wg-lw-glyph {
+  line-height: 0;
+  color: var(--c-home-pink);
+  height: 30px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.wg-lw-glyph svg {
+  width: 30px;
+  height: 30px;
+}
+
+.wg-lw-cond-text {
+  font-size: calc(11.5px * var(--app-text-scale, 1));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.wg-lw-feels {
+  font-size: calc(9px * var(--app-text-scale, 1));
+  color: var(--c-home-sub);
+  line-height: 1.1;
+}
+
+.wg-lw-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--c-home-sub);
+  font-size: calc(10.5px * var(--app-text-scale, 1));
+}
+
+.wg-lw-stats {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-top: 6px;
+  border-top: 1px solid var(--c-home-border);
+  color: var(--c-home-sub);
+  font-size: calc(9px * var(--app-text-scale, 1));
+  line-height: 1;
+  min-width: 0;
+}
+
+.wg-lw-stats > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.wg-lw-updated {
+  margin-left: auto;
+  opacity: 0.72;
+}
+
+.wg-lw-spin {
+  animation: wg-spin 0.9s linear infinite;
+}
+
+.wg-lw-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wg-lw-manual-auto {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: var(--c-text-title);
+  background: color-mix(in srgb, var(--c-home-pink, #f8bbd0) 22%, transparent);
+  font-size: calc(11px * var(--app-text-scale, 1));
+  font-weight: 600;
+  cursor: pointer;
+}
