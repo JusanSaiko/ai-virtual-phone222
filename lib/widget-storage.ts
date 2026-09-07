@@ -23,7 +23,7 @@ const DEFAULT_WIDGETS: WidgetInstance[] = [
   { id: "default_widget_my_space", type: "mySpace", size: "3x4", page: 2, row: 1, col: 1 },
   { id: "default_widget_ios_menu", type: "iosMenu", size: "1x4", page: 2, row: 4, col: 1 },
   // 第三页：天气卡 + 日历（日历占左半边，右半边是四个图标）
-  { id: "default_widget_weather", type: "freestyleFrame68", size: "2x4", page: 3, row: 2, col: 1 },
+  { id: "default_widget_weather", type: "liveWeather", size: "2x4", page: 3, row: 2, col: 1 },
   { id: "default_widget_calendar", type: "calendar", size: "2x2", page: 3, row: 4, col: 1 },
 ];
 
@@ -37,9 +37,16 @@ export function loadWidgets(): WidgetInstance[] {
     if (!raw) return createDefaultWidgets();
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidWidget).map((widget) => (
-      widget.type === "fortune" ? { ...widget, type: "interviewMagazine" } : widget
-    ));
+    return parsed
+        .filter(isValidWidget)
+        .map((widget) => (
+            widget.id === "default_widget_weather" && widget.type === "freestyleFrame68"
+                ? { ...widget, type: "liveWeather" as const }
+                : widget
+        ))
+        .map((widget) => (
+            widget.type === "fortune" ? { ...widget, type: "interviewMagazine" } : widget
+        ));
   } catch {
     return [];
   }

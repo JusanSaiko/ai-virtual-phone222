@@ -2,6 +2,7 @@ export type WidgetType =
   | "music"
   | "calendar"
   | "clock"
+  | "liveWeather"
   | "photo"
   | "loveNote"
   | "interviewMagazine"
@@ -100,6 +101,7 @@ export const WIDGET_CATALOG: WidgetCatalogEntry[] = [
   // 2×2
   { type: "calendar", name: "\u65E5\u5386", desc: "\u6708\u89C6\u56FE + \u9AD8\u4EAE\u4ECA\u5929", size: "2x2" },
   { type: "clock", name: "\u65F6\u949F + \u65E5\u671F", desc: "\u5927\u53F7\u65F6\u95F4 + \u65E5\u671F\u661F\u671F", size: "2x2" },
+  { type: "liveWeather", name: "\u5B9E\u65F6\u5929\u6C14", desc: "\u5B9A\u4F4D + \u5F53\u524D\u6E29\u5EA6\u4E0E\u5B9E\u65F6\u5929\u6C14", size: "2x4" },
   { type: "photo", name: "\u7167\u7247\u76F8\u6846", desc: "\u653E\u4E00\u5F20\u7167\u7247\uFF0C\u70B9\u51FB\u66FF\u6362", size: "2x2" },
   { type: "loveNote", name: "\u60C5\u8BDD\u4FBF\u7B7E", desc: "\u968F\u673A\u751C\u871C\u60C5\u8BDD", size: "2x2" },
   { type: "mascot", name: "AI助手", desc: "AI创作桌宠，点击召唤", size: "2x2" },

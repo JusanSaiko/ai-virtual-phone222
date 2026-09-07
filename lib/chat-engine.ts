@@ -75,6 +75,7 @@ import { buildCalendarScheduleMarker, getCurrentCalendarScheduleForPrompt } from
 import { getWeekStartIso } from "./calendar-utils";
 import { buildCharacterTimeContext } from "./character-time";
 import { getPromptTimestampOptionsForTimeContext } from "./prompt-time";
+import { buildRealWorldSensePrompt } from "./real-world-sense";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { pushApiLog } from "./api-log-store";
 export { getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
@@ -1861,6 +1862,9 @@ export async function buildChatPromptMessages(
         }
     }
 
+    const realWorldSenseRecentText = promptHistory.slice(-12).map(item => String(item.content ?? "")).join("\n");
+    const realWorldSensePrompt = buildRealWorldSensePrompt(realWorldSenseRecentText, userIdentity?.name || "用户");
+
     const [memResults, coreResults, musicLocal, musicCloud] = await Promise.all([
         retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
         retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
@@ -1961,6 +1965,9 @@ export async function buildChatPromptMessages(
             role: "system",
             content: "本次自定义 APP AI 任务只输出严格 JSON。不要输出 Markdown 代码块、解释文字或聊天富媒体指令。",
         });
+    }
+    if (realWorldSensePrompt) {
+        llmMessages.push({ role: "system", content: realWorldSensePrompt });
     }
     appendEmptyGenerateGuardMessage(llmMessages, config, historyForPrompt);
 

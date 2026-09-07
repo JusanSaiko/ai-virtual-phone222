@@ -7,6 +7,17 @@ import { WIDGET_SIZE_CELLS, WIDGET_CATALOG } from "@/lib/widget-types";
 import { useMusicPlayerOptional } from "@/lib/music-context";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import { ContentDialog } from "@/components/ui/modal";
+import { Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Droplets, Eye, EyeOff, Loader2, MapPin, Moon, RefreshCw, Sun, Wind } from "lucide-react";
+import {
+    formatRealWorldUpdateTime,
+    isRealWorldSnapshotFresh,
+    refreshRealWorldSense,
+    requestAutoRealWorldLocation,
+    setManualRealWorldLocation,
+    setRealWorldSenseEnabled,
+    useRealWorldSenseState,
+    type RealWorldWeatherSnapshot,
+} from "@/lib/real-world-sense";
 import { getMascotState, activateMascot, subscribeMascot } from "@/lib/mascot-state";
 import { getMascotSettingsSnapshot, resolveMascotImageRef, subscribeMascotSettings } from "@/lib/mascot-settings";
 import { loadDIYTemplates } from "@/lib/widget-storage";
@@ -94,6 +105,8 @@ function WidgetContent({
       return <CalendarWidget />;
     case "clock":
       return <ClockWidget />;
+    case "liveWeather":
+      return <LiveWeatherWidget preview={preview} />;
     case "photo":
       return <PhotoWidget config={config} widgetId={widgetId} onConfigChange={onConfigChange} preview={preview} />;
     case "loveNote":
@@ -158,6 +171,181 @@ function WidgetContent({
     default:
       return null;
   }
+}
+
+// ----------------------------------------------------
+//   Live Weather Widget (2×4)
+// ----------------------------------------------------
+const PREVIEW_WEATHER: RealWorldWeatherSnapshot = {
+  locationLabel: "上海 · 浦东新区",
+  latitude: 31.23,
+  longitude: 121.47,
+  temperatureC: 24,
+  feelsLikeC: 26,
+  conditionText: "多云",
+  conditionCode: 2,
+  isDay: true,
+  humidity: 62,
+  windKph: 11,
+  source: "open-meteo",
+  updatedAt: "",
+};
+
+function WeatherGlyphIcon({ code, isDay }: { code: number | null; isDay: boolean }) {
+  if (code === null) return <CloudSun size={42} strokeWidth={1.6} />;
+  if (code === 0 || code === 1) return isDay ? <Sun size={42} strokeWidth={1.6} /> : <Moon size={42} strokeWidth={1.6} />;
+  if (code === 2 || code === 3) return <Cloud size={42} strokeWidth={1.6} />;
+  if (code === 45 || code === 48) return <CloudFog size={42} strokeWidth={1.6} />;
+  if (code >= 51 && code <= 57) return <CloudDrizzle size={42} strokeWidth={1.6} />;
+  if (code >= 61 && code <= 67) return <CloudRain size={42} strokeWidth={1.6} />;
+  if (code >= 71 && code <= 77) return <CloudSnow size={42} strokeWidth={1.6} />;
+  if (code >= 80 && code <= 82) return <CloudRain size={42} strokeWidth={1.6} />;
+  if (code >= 85 && code <= 86) return <CloudSnow size={42} strokeWidth={1.6} />;
+  if (code >= 95) return <CloudLightning size={42} strokeWidth={1.6} />;
+  return <CloudSun size={42} strokeWidth={1.6} />;
+}
+
+function LiveWeatherWidget({ preview }: { preview?: boolean }) {
+  const sense = useRealWorldSenseState();
+  const [showManual, setShowManual] = useState(false);
+  const [manualDraft, setManualDraft] = useState("");
+  const snapshot = preview ? PREVIEW_WEATHER : sense.snapshot;
+  const enabled = preview ? true : sense.enabled;
+  const loading = !preview && sense.status === "loading";
+
+  useEffect(() => {
+    if (preview) return;
+    if (!sense.enabled && !sense.snapshot) return;
+    if (sense.status === "loading" || sense.status === "error" || sense.status === "denied") return;
+    if (!sense.snapshot || !isRealWorldSnapshotFresh(sense.snapshot)) {
+      void refreshRealWorldSense();
+    }
+  }, [preview, sense.enabled, sense.snapshot, sense.status]);
+
+  useEffect(() => {
+    if (!showManual) return;
+    setManualDraft(sense.manualPlace || snapshot?.locationLabel || "");
+  }, [showManual, sense.manualPlace, snapshot?.locationLabel]);
+
+  const closeManual = () => setShowManual(false);
+
+  const locationLabel = snapshot?.locationLabel
+    || sense.manualPlace
+    || (loading ? "正在获取位置" : sense.status === "denied" ? "定位未授权" : sense.status === "error" ? "获取失败" : "尚未定位");
+  const temperature = snapshot ? Math.round(snapshot.temperatureC) : null;
+
+  return (
+    <div className="wg-live-weather" data-state={preview ? "ok" : sense.status} data-enabled={enabled ? "true" : "false"}>
+      <div className="wg-lw-top">
+        <button
+          type="button"
+          className="wg-lw-location"
+          onClick={preview ? undefined : () => setShowManual(true)}
+          title="设置地点"
+          aria-label="设置地点"
+          disabled={preview}
+        >
+          <MapPin size={12} strokeWidth={2.2} />
+          <span className="wg-lw-location-text">{locationLabel}</span>
+        </button>
+        <div className="wg-lw-actions">
+          <button
+            type="button"
+            className="wg-lw-action"
+            onClick={() => setRealWorldSenseEnabled(!enabled)}
+            disabled={preview}
+            title={enabled ? "角色可感知当前环境" : "开启角色环境感知"}
+            aria-label={enabled ? "关闭角色环境感知" : "开启角色环境感知"}
+          >
+            {enabled ? <Eye size={13} /> : <EyeOff size={13} />}
+          </button>
+          <button
+            type="button"
+            className="wg-lw-action"
+            onClick={() => { void refreshRealWorldSense({ force: true }); }}
+            disabled={preview || loading}
+            title="刷新天气"
+            aria-label="刷新天气"
+          >
+            {loading ? <Loader2 className="wg-lw-spin" size={13} /> : <RefreshCw size={13} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="wg-lw-main">
+        {snapshot && temperature !== null ? (
+          <>
+            <div className="wg-lw-temp">
+              {temperature}<span>°</span>
+            </div>
+            <div className="wg-lw-cond">
+              <span className="wg-lw-glyph">
+                <WeatherGlyphIcon code={snapshot.conditionCode} isDay={snapshot.isDay} />
+              </span>
+              <span className="wg-lw-cond-text">{snapshot.conditionText}</span>
+              <span className="wg-lw-feels">体感 {Math.round(snapshot.feelsLikeC)}°</span>
+            </div>
+          </>
+        ) : (
+          <div className="wg-lw-empty">
+            <CloudSun size={34} strokeWidth={1.5} />
+            <span>{loading ? "正在获取" : "暂无天气数据"}</span>
+          </div>
+        )}
+      </div>
+
+      {snapshot ? (
+        <div className="wg-lw-stats">
+          <span><Droplets size={11} strokeWidth={2} /> {Math.round(snapshot.humidity)}%</span>
+          <span><Wind size={11} strokeWidth={2} /> {Math.round(snapshot.windKph)} km/h</span>
+          <span className="wg-lw-updated">{preview ? "实时" : formatRealWorldUpdateTime(snapshot.updatedAt)}</span>
+        </div>
+      ) : null}
+
+      {showManual && createPortal(
+        <ContentDialog
+          title="设置地点"
+          confirmLabel="使用该地点"
+          cancelLabel="取消"
+          onConfirm={() => {
+            if (manualDraft.trim()) {
+              void setManualRealWorldLocation(manualDraft);
+            }
+            closeManual();
+          }}
+          onCancel={closeManual}
+        >
+          <div className="wg-lw-manual">
+            <label className="menu-label">城市或地点</label>
+            <input
+              className="ui-input w-full"
+              value={manualDraft}
+              onChange={(e) => setManualDraft(e.target.value)}
+              placeholder="例如：上海 / 北京市朝阳区"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && manualDraft.trim()) {
+                  void setManualRealWorldLocation(manualDraft);
+                  closeManual();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="wg-lw-manual-auto"
+              onClick={() => {
+                requestAutoRealWorldLocation();
+                closeManual();
+              }}
+            >
+              <MapPin size={14} strokeWidth={2} />
+              使用自动定位
+            </button>
+          </div>
+        </ContentDialog>,
+        document.querySelector(".phone-shell") ?? document.body
+      )}
+    </div>
+  );
 }
 
 // ----------------------------------------------------

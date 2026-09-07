@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Activity, Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload } from "lucide-react";
+import { Activity, Check, ChevronRight, Clock, CloudSun, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Laptop, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X, CloudUpload } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -29,6 +29,10 @@ import { Toggle } from "./ui/form";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import { loadKeepAlive, saveKeepAlive } from "@/lib/weixin-storage";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
+import {
+    setRealWorldSenseEnabled,
+    useRealWorldSenseState,
+} from "@/lib/real-world-sense";
 
 export const SettingsContext = createContext<{
     setSubpageTitle: (title: string | null) => void;
@@ -80,6 +84,10 @@ const realtimeIconStyle = {
     "--icon-color": CONTENT_APP_ACCENTS.calendar,
 } as CSSProperties;
 
+const environmentIconStyle = {
+    "--icon-color": "#38bdf8",
+} as CSSProperties;
+
 const keepAliveIconStyle = {
     "--icon-color": CONTENT_APP_ACCENTS.chat,
 } as CSSProperties;
@@ -113,6 +121,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const [promptViewerEnabled, setPromptViewerEnabled] = useState(false);
     const [quickActionEnabled, setQuickActionEnabled] = useState(false);
     const [keepAlive, setKeepAlive] = useState(false);
+    const realWorldSense = useRealWorldSenseState();
     // 角色电脑：施工中弹窗（返回 / 仍要看看）
     const pageBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -223,6 +232,11 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         setTimeAware(next);
         saveChatAppSettings({ ...loadChatAppSettings(), timeAware: next });
         onNotice(next ? "已开启全局真实时间感知" : "已关闭全局真实时间感知");
+    }, [onNotice]);
+
+    const handleRealWorldSenseChange = useCallback((next: boolean) => {
+        setRealWorldSenseEnabled(next);
+        onNotice(next ? "已开启环境感知，正在获取定位与实时天气" : "已关闭环境感知");
     }, [onNotice]);
 
     const handlePromptViewerChange = useCallback((next: boolean) => {
@@ -370,6 +384,23 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         return () => window.removeEventListener("settings-navigate", onNav);
     }, []);
 
+    const realWorldSnapshot = realWorldSense.snapshot;
+    const realWorldSummary = realWorldSnapshot
+        ? `${realWorldSnapshot.locationLabel} · ${Math.round(realWorldSnapshot.temperatureC)}°C · ${realWorldSnapshot.conditionText}`
+        : "";
+    const realWorldDesc = realWorldSense.enabled
+        ? realWorldSense.status === "loading"
+            ? "正在获取定位与实时天气…"
+            : realWorldSummary
+                || (realWorldSense.status === "denied"
+                    ? "定位未授权，可在桌面天气组件里改用地点"
+                    : realWorldSense.status === "error"
+                        ? (realWorldSense.error || "实时天气获取失败，可在组件里重试")
+                        : "等待定位与实时天气数据")
+        : realWorldSummary
+            ? `${realWorldSummary} · 开启后角色可感知`
+            : "开启后，聊天角色可感知你的位置与实时天气";
+
     return (
         <SettingsContext.Provider value={{ setSubpageTitle, setOverrideBack, setSubpageRightAction }}>
             <PageShell title={title} onBack={handleBack} rightAction={currentPage !== "main" ? subpageRightActions[currentPage] : undefined} bodyRef={pageBodyRef}>
@@ -430,6 +461,16 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                     <div className="card-featured-desc">控制全局历史事件流中是否注入时间戳</div>
                                 </div>
                                 <Toggle checked={timeAware} onChange={handleTimeAwareChange} className="settings-toggle-control" />
+                            </div>
+                            <div className="app-card card-featured settings-toggle-card">
+                                <span className="card-icon card-icon-glass" style={environmentIconStyle}>
+                                    <CloudSun size={24} strokeWidth={1.8} />
+                                </span>
+                                <div className="card-featured-body">
+                                    <div className="card-featured-label">环境感知</div>
+                                    <div className="card-featured-desc">{realWorldDesc}</div>
+                                </div>
+                                <Toggle checked={realWorldSense.enabled} onChange={handleRealWorldSenseChange} className="settings-toggle-control" />
                             </div>
                             <div className="app-card card-featured settings-toggle-card">
                                 <span className="card-icon card-icon-glass">
