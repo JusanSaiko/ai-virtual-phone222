@@ -246,7 +246,7 @@ function LiveWeatherWidget({ preview }: { preview?: boolean }) {
           disabled={preview}
         >
           <MapPin size={12} strokeWidth={2.2} />
-          <span className="wg-lw-location-text">{locationLabel}</span>
+          <span className="wg-lw-location-text">{locationLabel}{snapshot?.approximate ? " · 网络定位" : ""}</span>
         </button>
         <div className="wg-lw-actions">
           <button
@@ -321,7 +321,7 @@ function LiveWeatherWidget({ preview }: { preview?: boolean }) {
               className="ui-input w-full"
               value={manualDraft}
               onChange={(e) => setManualDraft(e.target.value)}
-              placeholder="例如：上海 / 北京市朝阳区"
+              placeholder="例如：上海 / 长春 / 烟台"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && manualDraft.trim()) {
                   void setManualRealWorldLocation(manualDraft);

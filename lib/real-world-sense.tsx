@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { pinyin } from "pinyin-pro";
 import { hydrateKvDb, kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { loadRestTools } from "./tool-storage";
 
@@ -22,6 +23,7 @@ export type RealWorldWeatherSnapshot = {
     humidity: number;
     windKph: number;
     source: "open-meteo" | "weatherapi";
+    approximate?: boolean;
     updatedAt: string;
 };
 
@@ -297,6 +299,118 @@ function getBrowserPosition(): Promise<{ latitude: number; longitude: number }> 
     });
 }
 
+async function fetchIpLocation(): Promise<{ latitude: number; longitude: number; label: string }> {
+    const data = await fetchJson("https://ipwho.is/");
+    const latitude = typeof data.latitude === "number" ? data.latitude : Number(data.latitude);
+    const longitude = typeof data.longitude === "number" ? data.longitude : Number(data.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        throw new Error("网络定位失败。");
+    }
+    const label = await reverseGeocode(latitude, longitude);
+    return { latitude, longitude, label };
+}
+
+function isAdministrativeGeocodeHit(hit: Record<string, unknown>): boolean {
+    const featureCode = typeof hit.feature_code === "string" ? hit.feature_code : "";
+    if (featureCode === "PPLC" || featureCode === "PPLA" || featureCode === "PPLA2"
+        || featureCode === "PPLA3" || featureCode === "PPLA4" || featureCode === "PPLA5"
+        || featureCode === "PPLX" || featureCode === "PPL") return true;
+    if (featureCode.startsWith("ADM")) return true;
+    return false;
+}
+
+function geocodeHitScore(hit: Record<string, unknown>, query: string, baseQuery: string): number {
+    const name = typeof hit.name === "string" ? hit.name : "";
+    const admin1 = typeof hit.admin1 === "string" ? hit.admin1 : "";
+    const admin2 = typeof hit.admin2 === "string" ? hit.admin2 : "";
+    const featureCode = typeof hit.feature_code === "string" ? hit.feature_code : "";
+    const countryCode = typeof hit.country_code === "string" ? hit.country_code : "";
+    let score = 0;
+
+    if (countryCode === "CN") score += 6;
+    if (isAdministrativeGeocodeHit(hit)) score += 18;
+    if (featureCode === "PPLC" || featureCode === "PPLA") score += 18;
+    if (featureCode === "PPLA2" || featureCode === "PPLA3") score += 10;
+    if (featureCode === "PRK" || featureCode === "AIRP") score -= 30;
+
+    if (query === name) score += 22;
+    if (name === `${baseQuery}市` || name === `${baseQuery}州` || name === `${baseQuery}地区`) score += 30;
+    if (name.startsWith(baseQuery) && name.length > baseQuery.length) score += 12;
+    if (admin1 === baseQuery || admin2 === baseQuery || admin2 === `${baseQuery}市`) score += 14;
+    if (admin1 && admin2) score += 4;
+
+    return score;
+}
+
+async function geocodeOpenMeteo(place: string): Promise<{ latitude: number; longitude: number; label: string }> {
+    const baseQuery = place.trim();
+    const isChinese = /[\u4e00-\u9fff]/.test(baseQuery);
+    const queries = [baseQuery];
+    if (!/(市|州|县|区|镇|乡|盟|旗|地区|自治)$/.test(baseQuery)) {
+        queries.push(`${baseQuery}市`);
+    }
+
+    let romanQuery = "";
+    if (isChinese) {
+        try {
+            const cityCore = baseQuery.replace(/(?:省|市)$/g, "");
+            romanQuery = pinyin(cityCore, { toneType: "none" }).replace(/\s+/g, "").toLowerCase();
+            if (romanQuery && romanQuery !== cityCore.toLowerCase()) {
+                queries.unshift(romanQuery);
+            }
+        } catch {
+            // keep original Chinese queries
+        }
+    }
+
+    const settled = await Promise.allSettled(
+        queries.map(async (query) => {
+            const language = /^[a-z0-9]+$/i.test(query) ? "en" : "zh";
+            const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=${language}&format=json`;
+            const data = await fetchJson(url);
+            return { query, results: (data.results as Array<Record<string, unknown>> | undefined) || [] };
+        }),
+    );
+
+    const candidates: Array<{ hit: Record<string, unknown>; score: number }> = [];
+    for (const item of settled) {
+        if (item.status !== "fulfilled") continue;
+        for (const hit of item.value.results) {
+            candidates.push({
+                hit,
+                score: geocodeHitScore(hit, item.value.query, baseQuery),
+            });
+        }
+    }
+
+    const romanCandidates = romanQuery
+        ? candidates.filter(item => item.hit.name && typeof item.hit.name === "string"
+            && String(item.hit.name).toLowerCase() === romanQuery)
+        : [];
+    const best = (romanCandidates.length > 0 ? romanCandidates : candidates)
+        .sort((a, b) => b.score - a.score)[0];
+    const hit = best?.hit;
+    if (!hit || typeof hit.latitude !== "number" || typeof hit.longitude !== "number") {
+        throw new Error("找不到这个地点，试试更具体的城市名。");
+    }
+    const name = typeof hit.name === "string" ? hit.name : "";
+    const admin1 = typeof hit.admin1 === "string" ? hit.admin1 : "";
+    const admin2 = typeof hit.admin2 === "string" ? hit.admin2 : "";
+    const country = typeof hit.country === "string" ? hit.country : "";
+    return {
+        latitude: hit.latitude,
+        longitude: hit.longitude,
+        label: isChinese
+            ? baseQuery
+            : compactLabel([
+                name,
+                admin2 !== name ? admin2 : "",
+                admin1 !== name && admin1 !== admin2 ? admin1 : "",
+                country !== name && country !== admin1 && country !== admin2 ? country : "",
+            ]) || place,
+    };
+}
+
 async function geocodePlace(place: string): Promise<{ latitude: number; longitude: number; label: string }> {
     if (getWeatherApiKey()) {
         try {
@@ -323,21 +437,7 @@ async function geocodePlace(place: string): Promise<{ latitude: number; longitud
             // fall through to keyless geocoder
         }
     }
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=zh&format=json`;
-    const data = await fetchJson(url);
-    const results = data.results as Array<Record<string, unknown>> | undefined;
-    const hit = results?.[0];
-    if (!hit || typeof hit.latitude !== "number" || typeof hit.longitude !== "number") {
-        throw new Error("找不到这个地点，试试更具体的城市名。");
-    }
-    const name = typeof hit.name === "string" ? hit.name : "";
-    const admin1 = typeof hit.admin1 === "string" ? hit.admin1 : "";
-    const country = typeof hit.country === "string" ? hit.country : "";
-    return {
-        latitude: hit.latitude,
-        longitude: hit.longitude,
-        label: compactLabel([name, admin1 !== name ? admin1 : "", country !== name && country !== admin1 ? country : ""]) || place,
-    };
+    return geocodeOpenMeteo(place);
 }
 
 export function setRealWorldSenseEnabled(enabled: boolean): void {
@@ -357,6 +457,7 @@ export async function refreshRealWorldSense(options?: { force?: boolean }): Prom
         let longitude: number;
         let locationLabel = "";
         let locationMode: RealWorldLocationMode = "auto";
+        let approximate = false;
 
         if (currentState.locationMode === "manual" && manual) {
             const geo = await geocodePlace(manual);
@@ -371,20 +472,29 @@ export async function refreshRealWorldSense(options?: { force?: boolean }): Prom
                 longitude = pos.longitude;
                 locationMode = "auto";
             } catch (err) {
-                const denied = Boolean((err as Error & { permissionDenied?: boolean }).permissionDenied);
-                if (!manual || denied) {
-                    patchState({
-                        status: denied ? "denied" : "error",
-                        error: denied ? "浏览器未授权定位。" : "定位失败，请稍后重试。",
-                        locationMode: denied ? "auto" : currentState.locationMode,
-                    });
-                    return;
+                try {
+                    const ip = await fetchIpLocation();
+                    latitude = ip.latitude;
+                    longitude = ip.longitude;
+                    locationLabel = ip.label;
+                    locationMode = "auto";
+                    approximate = true;
+                } catch {
+                    const denied = Boolean((err as Error & { permissionDenied?: boolean }).permissionDenied);
+                    if (!manual || denied) {
+                        patchState({
+                            status: denied ? "denied" : "error",
+                            error: denied ? "浏览器未授权定位。" : "定位失败，请稍后重试。",
+                            locationMode: denied ? "auto" : currentState.locationMode,
+                        });
+                        return;
+                    }
+                    const geo = await geocodePlace(manual);
+                    latitude = geo.latitude;
+                    longitude = geo.longitude;
+                    locationLabel = geo.label;
+                    locationMode = "manual";
                 }
-                const geo = await geocodePlace(manual);
-                latitude = geo.latitude;
-                longitude = geo.longitude;
-                locationLabel = geo.label;
-                locationMode = "manual";
             }
         }
 
@@ -398,6 +508,7 @@ export async function refreshRealWorldSense(options?: { force?: boolean }): Prom
             locationLabel: fetched.locationLabel || locationLabel || coordFallbackLabel(latitude, longitude),
             latitude,
             longitude,
+            approximate: approximate || undefined,
             updatedAt: new Date().toISOString(),
         };
         patchState({ status: "ok", snapshot, locationMode, error: "" });
@@ -465,6 +576,7 @@ export function buildRealWorldSensePrompt(recentText: string, userName = "用户
         "",
         `<现实环境感知> ${userName}已开启环境感知，以下是你当前可以确知的事实，未列出的请勿编造：`,
         `- ${userName}所在地：${s.locationLabel}`,
+        ...(s.approximate ? ["- 定位说明：当前为网络定位，可能与实际位置有偏差"] : []),
         `- 实时天气：${s.conditionText}`,
         `- 当前温度：${temperature}°C，体感${feelsLike}°C`,
         `- 湿度：${humidity}%，风速：${wind} km/h`,
